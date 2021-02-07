@@ -2,14 +2,17 @@ import os
 import sys
 import random
 import pygame
+import arcade
 
 WIDTH = 500
 HEIGHT = 500
 FPS = 144
 
+
 def terminate():
     pygame.quit()
     sys.exit()
+
 
 def load_level(filename):
     filename = "data/" + filename
@@ -50,7 +53,7 @@ enemy_image = load_image('enemy.png')
 
 tile_width = tile_height = 50
 player = None
-enemies = []
+enemy = None
 clock = pygame.time.Clock()
 
 all_sprites = pygame.sprite.Group()
@@ -63,7 +66,6 @@ font = pygame.font.SysFont("Arial", 18)
 
 def generate_level(level):
     new_player, x, y = None, None, None
-    enemies = []
     for y in range(len(level)):
         for x in range(len(level[y])):
             if level[y][x] == '.':
@@ -75,14 +77,50 @@ def generate_level(level):
             elif level[y][x] == '@':
                 Tile('empty', y, x)
                 new_player = Player(y, x)
-    if len(level) > 12:
-        for _ in range(5):
-            rint_y = random.randint(6, len(level) - 6)
-            rint_x = random.randint(6, len(level[rint_y]) - 6)
-            if level[rint_y][rint_x] != "@" and level[rint_y][rint_x] != "#":
-                e = Enemy(rint_y, rint_x)
-                enemies.append(e)
-    return new_player, enemies, y, x
+    return new_player, y, x
+
+
+class IntroductionView(arcade.View):
+    def on_show(self):
+        arcade.set_background_color(arcade.csscolor.DARK_GRAY)
+        arcade.set_viewport(0, WIDTH - 1, HEIGHT - 1)
+
+    def on_draw(self):
+        arcade.start_render()
+        arcade.draw_text("Бей, молись, беги", WIDTH // 2, HEIGHT // 2, arcade.csscolor.WHITE, font_size=50,
+                         anchor_x='center')
+        arcade.draw_text("Нажмите чтобы начать", WIDTH // 2, HEIGHT // 2 - 75,
+                         arcade.csscolor.WHITE, font_size=25,
+                         anchor_x='center')
+
+    def on_mouse_press(self, x: float, y: float, button: int, modifiers: int):
+        view = IntroductionView()
+        self.window.show_view(view)
+
+    def on_mouse_press(self, x: float, y: float, button: int, modifiers: int):
+        arcade.close_window()
+
+
+class GameOver(IntroductionView):
+    def __init__(self, score):
+        super(GameOver, self).__init__()
+        self.score = score
+
+    def on_show(self):
+        arcade.set_background_color(arcade.csscolor.DARK_GRAY)
+        arcade.set_viewport(0, WIDTH - 1, HEIGHT - 1)
+
+    def on_draw(self):
+        arcade.start_render()
+        arcade.draw_text("Конец игры", WIDTH // 2, HEIGHT // 2, arcade.csscolor.WHITE, font_size=50,
+                             anchor_x='center')
+        arcade.draw_text("Набрано очков" + self.score, WIDTH // 2, HEIGHT // 2 - 75,
+                         arcade.csscolor.WHITE, font_size=25,
+                         anchor_x='center')
+
+    def on_mouse_press(self, x: float, y: float, button: int, modifiers: int):
+        view = IntroductionView()
+        self.window.show_view(view)
 
 
 class Tile(pygame.sprite.Sprite):
@@ -102,7 +140,7 @@ class Player(pygame.sprite.Sprite):
         self.chance_of_critical = 3.0
         self.rect = self.image.get_rect().move(
             tile_width * pos_x + 15, tile_height * pos_y + 5)
-        self.pos = (pos_y, pos_x)
+        self.y, self.x = self.pos = (pos_y, pos_x)
         self.nap = "l"
 
     def update(self):
@@ -113,122 +151,29 @@ class Player(pygame.sprite.Sprite):
         self.dy = 0
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_LEFT:
-                if level[self.pos[0] + 1][self.pos[1]] != "#":
-                    self.pos = (self.pos[0] + 1, self.pos[1])
+                if level[self.pos[0] - 1][self.pos[1]] != "#":
+                    self.pos = (self.pos[0] - 1, self.pos[1])
                     if self.nap != 'l':
                         self.image = pygame.transform.flip(self.image, True, False)
                         self.nap = 'l'
-                    self.dx = -1
+                    self.dx = 1
             if event.key == pygame.K_RIGHT:
-                if level[self.pos[0] - 1][self.pos[1]] != "#":
-                    self.pos = (self.pos[0] - 1, self.pos[1])
+                if level[self.pos[0] + 1][self.pos[1]] != "#":
+                    self.pos = (self.pos[0] + 1, self.pos[1])
                     if self.nap != 'r':
                         self.image = pygame.transform.flip(self.image, True, False)
                         self.nap = 'r'
-                    self.dx = 1
+                    self.dx = -1
             if event.key == pygame.K_UP:
-                if level[self.pos[0]][self.pos[1] + 1] != "#":
-                    self.pos = (self.pos[0], self.pos[1] - 1)
-                    self.dy = -1
-            if event.key == pygame.K_DOWN:
                 if level[self.pos[0]][self.pos[1] - 1] != "#":
                     self.pos = (self.pos[0], self.pos[1] - 1)
                     self.dy = 1
+            if event.key == pygame.K_DOWN:
+                if level[self.pos[0]][self.pos[1] + 1] != "#":
+                    self.pos = (self.pos[0], self.pos[1] + 1)
+                    self.dy = -1
+            self.y, self.x = self.pos
             self.move()
-
-    def move(self):
-        camera.move(self.dx * tile_width, self.dy * tile_height)
-        for sprite in player_group:
-            camera.apply(sprite)
-
-    def attack(self):
-        for e in enemies:
-            if self.rect.colliderect(e.rect):
-                if random.randint(1, 100) <= 5:
-                    given_damage = 0
-                    print("was block")
-                    print(given_damage, self.chance_of_critical, self.health)
-                    self.score += 5
-                else:
-                    if random.uniform(1.0, 10) <= self.chance_of_critical:
-                        if random.uniform(1.0, 10) <= self.chance_of_critical:
-                            given_damage = (self.health * 0.1) * 2.5
-                            self.health *= 2
-                            self.chance_of_critical -= 1
-                            print("was crit and + health")
-                            self.score += 3
-                        else:
-                            given_damage = (self.health * 0.1) * 2
-                            if random.getrandbits(1):
-                                self.chance_of_critical += 0.2
-                            else:
-                                self.chance_of_critical -= 0.2
-                            print("was crit")
-                            self.score += 2
-                    else:
-                        self.chance_of_critical += (self.chance_of_critical * 0.13)
-                        given_damage = (self.health * 0.1)
-                        print("no crit")
-                        self.score += 1
-                    print(given_damage, self.chance_of_critical, self.health)
-                    if self.chance_of_critical >= 5:
-                        self.chance_of_critical -= 3
-                        self.health += 19
-                print(self.health, e.health)
-                e.take_damage(given_damage)
-
-    def take_damage(self, given_damage):
-        self.health -= given_damage
-        self.score -= 1
-        self.update()
-
-
-class Enemy(pygame.sprite.Sprite):
-    def __init__(self, pos_y, pos_x):
-        super().__init__(enemy_group, all_sprites)
-        self.image = enemy_image
-        self.nap = 'l'
-        self.health = 100
-        self.rect = self.image.get_rect().move(
-            tile_width * pos_y, tile_height * pos_x)
-        self.position = (pos_y, pos_x)
-        self.dx = self.dy = 0
-        self.can_move = 0
-
-    def update(self):
-        if self.health <= 0:
-            self.kill()
-            enemies.remove(self)
-        if self.can_move == 1:
-            if self.position != player.pos:
-                if player.pos[0] < self.position[0]:
-                    if level[self.position[0] - 1][self.position[1]] != "#":
-                        self.position = (self.position[0] - 1, self.position[1])
-                        if self.nap != 'l':
-                            self.image = pygame.transform.flip(self.image, True, False)
-                            self.nap = 'l'
-                        self.dx = -1
-                elif player.pos[0] > self.position[0]:
-                    if level[self.position[0] + 1][self.position[1]] != "#":
-                        self.position = (self.position[0] + 1, self.position[1])
-                        if self.nap != 'r':
-                            self.image = pygame.transform.flip(self.image, True, False)
-                            self.nap = 'r'
-                        self.dx = 1
-                elif player.pos[1] < self.position[1]:
-                    if level[self.position[0]][self.position[1] - 1] != "#":
-                        self.position = (self.position[0], self.position[1] - 1)
-                        self.dy = -1
-                elif player.pos[1] > self.position[1]:
-                    if level[self.position[0]][self.position[1] + 1] != "#":
-                        self.position = (self.position[0], self.position[1] + 1)
-                        self.dy = 1
-            self.move()
-        else:
-            self.can_move = 0
-        if self.rect.colliderect(player.rect):
-            pygame.time.delay(1000)
-            player.take_damage(e.attack())
 
     def move(self):
         camera.move(self.dx * tile_width, self.dy * tile_height)
@@ -236,16 +181,83 @@ class Enemy(pygame.sprite.Sprite):
             camera.apply(sprite)
 
     def attack(self):
+        if random.uniform(1.0, 10) <= self.chance_of_critical:
+            if random.uniform(1.0, 10) <= self.chance_of_critical:
+                given_damage = (self.health * 0.1) * 2.5
+                self.health *= 2
+                self.chance_of_critical -= 1
+                print("critical hit and + heal")
+                screen.blit(update_damage("critical hit and heal", round(given_damage)), (0, 50))
+                self.score += 3
+            else:
+                given_damage = (self.health * 0.1) * 2
+                if random.getrandbits(1):
+                    self.chance_of_critical += 0.2
+                else:
+                    self.chance_of_critical -= 0.2
+                print("was crit")
+                screen.blit(update_damage("critical hit", round(given_damage)), (0, 50))
+                self.score += 2
+        else:
+            self.chance_of_critical += (self.chance_of_critical * 0.13)
+            given_damage = (self.health * 0.1)
+            screen.blit(update_damage("simple hit", round(given_damage)), (0, 50))
+            self.score += 1
+        print(given_damage, self.chance_of_critical, self.health)
+        if self.chance_of_critical >= 5:
+            self.chance_of_critical -= 3
+            self.health += 19
+            screen.blit(update_damage("heal, chance of critical heat (in %)", self.chance_of_critical * 10), (0, 50))
+        enemy.take_damage(given_damage)
+
+    def take_damage(self, given_damage):
+        if random.randint(1, 100) <= 5:
+            print("was block")
+            self.score += 5
+        else:
+            self.health -= given_damage
+            self.score -= 1
+        self.update()
+
+
+class Enemy(pygame.sprite.Sprite):
+    def __init__(self, pos_y, pos_x):
+        super().__init__(enemy_group, tiles_group)
+        self.image = enemy_image
+        self.nap = 'l'
+        p = random.uniform(0, 1)
+        self.health = player.health * p
+        print("health in time of spawn", self.health, p)
+        self.rect = self.image.get_rect().move(
+            tile_width * pos_y + 25, tile_height * pos_x + 25)
+        self.y, self.x = self.position = (pos_y, pos_x)
+        print(self.position)
+        self.dx = self.dy = 0
+
+    def update(self):
+        if self.health <= 0:
+            self.kill()
+            player.score += 15
+            return
+
+    def move(self):
+        camera.move(self.dx * tile_width, self.dy * tile_height)
+        for sprite in enemy_group:
+            camera.apply(sprite)
+
+    def attack(self):
         if random.randint(1, 10) <= 2:
             given_damage = self.health * 0.1 * 2
         else:
-            given_damage = self.health * 0.1
+            given_damage = self.health * 0.11
         print("enemy health", self.health)
         return given_damage
 
     def take_damage(self, given_damage):
-        self.health -= given_damage
-        self.can_move = 0
+        if random.randint(1, 100) <= 3:
+            pass
+        else:
+            self.health -= given_damage
         self.update()
 
 
@@ -290,35 +302,81 @@ class AnimatedAttack(pygame.sprite.Sprite):
         self.image = self.frames[self.cur_frame]
 
 
+def spawn_enemy():
+    while True:
+        rint_y = random.randint(0, len(level) - 10)
+        rint_x = random.randint(0, len(level[rint_y]) - 10)
+        if level[rint_y + 5][rint_x + 5] != "#":
+            enemy = Enemy(rint_y, rint_x)
+            return enemy
+
+
 def update_fps():
     fps = str(int(clock.get_fps()))
     fps_text = font.render(fps, 1, pygame.Color("coral"))
     return fps_text
 
 
+def update_hp():
+    hp = str(round(player.health))
+    hp_text = font.render("HP - " + hp, 1, pygame.Color("red"))
+    return hp_text
+
+
+def update_damage(message, given_damage):
+    damage_text = font.render(message + str(given_damage), 1, pygame.Color("red"))
+    return damage_text
+
+
+def update_score():
+    score = str(player.score)
+    score_text = font.render("Score - " + score, 1, pygame.Color("white"))
+    return score_text
+
+
 level = load_level('lvl1.txt')
-player, enemies, level_y, level_x = generate_level(level)
+player, level_y, level_x = generate_level(level)
 camera = Camera()
 running = True
+enemy = spawn_enemy()
+view = IntroductionView()
+window = arcade.Window(WIDTH, HEIGHT, "")
+window.show_view(view)
+arcade.run()
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
         if event.type == pygame.KEYDOWN:
             player.update()
-            for e in enemies:
-                e.update()
-                clock.tick(FPS // 10)
+            print(player.pos)
+            print("enemy pos", enemy.position)
         elif event.type == pygame.MOUSEBUTTONDOWN:
-            player.attack()
+            if player.rect.colliderect(enemy.rect):
+                player.attack()
+                player.take_damage(enemy.attack())
+        if player.health <=0:
+            view = GameOver(player.score)
+            window.show_view(view)
+            arcade.run()
+            break
     camera.update(player)
     for sprite in all_sprites:
         camera.apply(sprite)
+    if enemy:
+        if enemy.health <= 0:
+            enemy = spawn_enemy()
+        else:
+            enemy.update()
+    else:
+        enemy = spawn_enemy()
     screen.fill('black')
     all_sprites.draw(screen)
     tiles_group.draw(screen)
     enemy_group.draw(screen)
     player_group.draw(screen)
     screen.blit(update_fps(), (10, 0))
+    screen.blit(update_hp(), (0, 20))
+    screen.blit(update_score(), (0, 35))
     pygame.display.flip()
     clock.tick(FPS)
