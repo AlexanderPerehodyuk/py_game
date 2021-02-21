@@ -3,9 +3,8 @@ import sys
 import random
 import pygame
 
-
-WIDTH = 500
-HEIGHT = 500
+WIDTH = 1000
+HEIGHT = 1000
 FPS = 144
 
 
@@ -58,10 +57,11 @@ clock = pygame.time.Clock()
 
 all_sprites = pygame.sprite.Group()
 tiles_group = pygame.sprite.Group()
-let_group = pygame.sprite.Group()
+bonus_group = pygame.sprite.Group()
 player_group = pygame.sprite.Group()
 enemy_group = pygame.sprite.Group()
 font = pygame.font.SysFont("Arial", 18)
+font_b = pygame.font.SysFont("Arial", 26)
 
 
 def generate_level(level):
@@ -98,6 +98,11 @@ class Player(pygame.sprite.Sprite):
         self.rect = self.image.get_rect().move(
             tile_width * pos_x + 15, tile_height * pos_y + 5)
         self.y, self.x = self.pos = (pos_y, pos_x)
+        self.bonus_to_damage = 0
+        self.count_kill = 0
+        self.hp_bonus = 0
+        self.took_damage = 0
+        self.gave_damage = 0
         self.messange = ""
         self.nap = "l"
 
@@ -134,20 +139,21 @@ class Player(pygame.sprite.Sprite):
             self.move()
 
     def move(self):
-        camera.move(self.dx * tile_width, self.dy * tile_height)
+        self.rect = self.image.get_rect().move(
+            tile_width * self.y + 15, tile_height * self.x + 5)
         for sprite in tiles_group:
             camera.apply(sprite)
 
     def attack(self):
         if random.uniform(1.0, 10) <= self.chance_of_critical:
             if random.uniform(1.0, 10) <= self.chance_of_critical:
-                given_damage = (self.health * 0.1) * 2.5
+                given_damage = (self.health * 0.1) * 2.5 + self.bonus_to_damage
                 self.health *= 2
                 self.chance_of_critical -= 1
                 self.messange = "critical hit and heal " + str(round(given_damage))
                 self.score += 3
             else:
-                given_damage = (self.health * 0.1) * 2
+                given_damage = (self.health * 0.1) * 2 + self.bonus_to_damage
                 if random.getrandbits(1):
                     self.chance_of_critical += 0.2
                 else:
@@ -156,7 +162,7 @@ class Player(pygame.sprite.Sprite):
                 self.score += 2
         else:
             self.chance_of_critical += (self.chance_of_critical * 0.13)
-            given_damage = (self.health * 0.1)
+            given_damage = (self.health * 0.1) + self.bonus_to_damage
             self.messange = "simple hit " + str(round(given_damage))
             self.score += 1
         print(given_damage, self.chance_of_critical, self.health)
@@ -165,6 +171,7 @@ class Player(pygame.sprite.Sprite):
             self.health += 19
             self.messange = "heal, chance of critical heat (in %) " + str(round(self.chance_of_critical * 10))
         enemy.take_damage(given_damage)
+        self.gave_damage += given_damage
 
     def take_damage(self, given_damage):
         if random.randint(1, 100) <= 5:
@@ -174,38 +181,69 @@ class Player(pygame.sprite.Sprite):
             self.health -= given_damage
             self.score -= 1
         self.update()
+        self.took_damage += given_damage
 
 
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, pos_y, pos_x):
-        super().__init__(enemy_group, tiles_group)
+        super().__init__(enemy_group, tiles_group, all_sprites)
         self.image = enemy_image
         self.nap = 'l'
-        p = random.uniform(0, 1.05)
+        if player.score <= 100:
+            p = random.uniform(0, 1.2)
+        elif player.score <= 1000:
+            p = random.uniform(0.5, 1.4)
+        elif player.score >= 1001:
+            p = random.uniform(1, 2)
         self.health = player.health * p
         print("health in time of spawn", self.health, p)
         self.rect = self.image.get_rect().move(
-            tile_width * pos_y + 25, tile_height * pos_x + 25)
+            tile_width * pos_y, tile_height * pos_x)
         self.y, self.x = self.position = (pos_y, pos_x)
+        self.bonus_to_damage = 0
         print(self.position)
         self.dx = self.dy = 0
 
     def update(self):
         if self.health <= 0:
             self.kill()
+            player.count_kill += 1
             player.score += 15
             return
+        if player.pos != self.position:
+            if player.x < self.x:
+                if level[self.y][self.x - 1] != "#":
+                    if self.nap != 'l':
+                        self.image = pygame.transform.flip(self.image, True, False)
+                        self.nap = 'l'
+                    self.x -= 1
+            elif player.x < self.x:
+                if level[self.y][self.x + 1] != "#":
+                    if self.nap != 'r':
+                        self.image = pygame.transform.flip(self.image, True, False)
+                        self.nap = 'r'
+                    self.x += 1
+            if player.y > self.y:
+                if level[self.y + 1][self.x] != "#":
+                    self.y += 1
+            elif player.y < self.y:
+                if level[self.position[0] - 1][self.position[1]] != "#":
+                    self.y -= 1
+        self.position = self.y, self.x
+        self.move()
+        clock.tick(10)
 
     def move(self):
-        camera.move(self.dx * tile_width, self.dy * tile_height)
-        for sprite in enemy_group:
+        self.rect = self.image.get_rect().move(
+            tile_width * self.y, tile_height * self.x)
+        for sprite in all_sprites:
             camera.apply(sprite)
 
     def attack(self):
         if random.randint(1, 10) <= 2:
-            given_damage = self.health * 0.1 * 2
+            given_damage = self.health * 0.1 * 2 + self.bonus_to_damage
         else:
-            given_damage = self.health * 0.11
+            given_damage = self.health * 0.11 + self.bonus_to_damage
         print("enemy health", self.health)
         return given_damage
 
@@ -235,36 +273,33 @@ class Camera:
         self.dy = y
 
 
-class AnimatedAttack(pygame.sprite.Sprite):
-    def __init__(self, sheet, columns, rows, x, y):
-        super().__init__(all_sprites)
-        self.frames = []
-        self.cut_sheet(sheet, columns, rows)
-        self.cur_frame = 0
-        self.image = self.frames[self.cur_frame]
-        self.rect = self.rect.move(x, y)
-
-    def cut_sheet(self, sheet, columns, rows):
-        self.rect = pygame.Rect(0, 0, sheet.get_width() // columns,
-                                sheet.get_height() // rows)
-        for j in range(rows):
-            for i in range(columns):
-                frame_location = (self.rect.w * i, self.rect.h * j)
-                self.frames.append(sheet.subsurface(pygame.Rect(
-                    frame_location, self.rect.size)))
-
-    def update(self):
-        self.cur_frame = (self.cur_frame + 1) % len(self.frames)
-        self.image = self.frames[self.cur_frame]
+class Bonus(pygame.sprite.Sprite):
+    def __init__(self, x, y):
+        super().__init__(bonus_group, tiles_group, all_sprites)
+        self.r_b = random.getrandbits(1)
+        b_image = ["bonus_to_damage.png", "bonus_to_hp.png"]
+        self.image = load_image(b_image[self.r_b])
+        self.rect = self.image.get_rect().move(
+            tile_width * y, tile_height * x)
+        self.y, self.x = self.pos = y, x
 
 
 def spawn_enemy():
     while True:
-        rint_y = random.randint(0, len(level) - 15)
-        rint_x = random.randint(0, len(level[rint_y]) - 15)
-        if level[rint_y + 5][rint_x + 5] != "#":
+        rint_y = random.randint(1, len(level) - 1)
+        rint_x = random.randint(1, len(level[rint_y]) - 1)
+        if level[rint_y][rint_x] != "#":
             enemy = Enemy(rint_y, rint_x)
             return enemy
+
+
+def spawn_bonus():
+    while True:
+        rint_y = random.randint(1, len(level) - 1)
+        rint_x = random.randint(1, len(level[rint_y]) - 1)
+        if level[rint_x][rint_y] == "." and enemy.position != (rint_y, rint_x):
+            bonus = Bonus(rint_y, rint_x)
+            return bonus
 
 
 def update_fps():
@@ -280,7 +315,7 @@ def update_hp():
 
 
 def update_damage():
-    damage_text = font.render(player.messange, 1, pygame.Color("grey"))
+    damage_text = font.render(player.messange, 1, pygame.Color("white"))
     return damage_text
 
 
@@ -296,44 +331,98 @@ def enemy_hp():
     return score_text
 
 
+def update_bonus():
+    bonus_text = font_b.render(bonus_messange, 1, pygame.Color("Red"))
+    return bonus_text
+
+
 level = load_level('lvl1.txt')
 player, level_y, level_x = generate_level(level)
 camera = Camera()
 running = True
 enemy = spawn_enemy()
+bonus = spawn_bonus()
+bonus_end = 0
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
         if event.type == pygame.KEYDOWN:
             player.update()
-            print(player.pos)
-            print("enemy pos", enemy.position)
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if player.rect.colliderect(enemy.rect):
                 player.attack()
                 player.take_damage(enemy.attack())
     if player.health <= 0:
         break
-    camera.update(player)
-    for sprite in all_sprites:
-        camera.apply(sprite)
+    if bonus.rect.colliderect(player.rect):
+        if bonus.r_b == 1:
+            player.health += 100
+            player.hp_bonus += 100
+            bonus_messange = "You picked up the health bonus"
+        else:
+            if player.health < 1000:
+                player.bonus_to_damage += 10
+            else:
+                player.bonus_to_damage += 100
+
+            bonus_messange = "You picked up the damage bonus"
+        bonus_end = pygame.time.get_ticks() + 3000
+        player.score += 20
+        bonus.kill()
+    elif bonus.rect.colliderect(enemy.rect):
+        if bonus.r_b == 1:
+            enemy.health += 100
+            bonus_messange = "Enemy picked up the health bonus"
+        else:
+            if enemy.health < 1000:
+                enemy.bonus_to_damage += 10
+            else:
+                enemy.bonus_to_damage += 100
+            bonus_messange = "Enemy picked up the damage bonus"
+        bonus_end = pygame.time.get_ticks() + 5000
+        bonus.kill()
     if enemy:
         if enemy.health <= 0:
             enemy = spawn_enemy()
-        else:
-            enemy.update()
+            bonus.kill()
+            bonus = spawn_bonus()
     else:
         enemy = spawn_enemy()
+    enemy.update()
     screen.fill('black')
     all_sprites.draw(screen)
+    bonus_group.draw(screen)
     tiles_group.draw(screen)
     enemy_group.draw(screen)
     player_group.draw(screen)
-    screen.blit(update_fps(), (10, 0))
+    if pygame.time.get_ticks() < bonus_end:
+        screen.blit(update_bonus(), (300, 400))
+    screen.blit(update_fps(), (0, 0))
     screen.blit(update_hp(), (0, 20))
-    screen.blit(enemy_hp(), (100, 20))
-    screen.blit(update_score(), (0, 35))
-    screen.blit(update_damage(), (0, 60))
+    screen.blit(enemy_hp(), (0, 35))
+    screen.blit(update_score(), (0, 55))
+    screen.blit(update_damage(), (0, 75))
+    pygame.display.flip()
+    clock.tick(FPS)
+running = True
+rip_image = load_image("death.jpg")
+while running and player.health <= 0:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+    screen.blit(rip_image, rip_image.get_rect())
+    screen.blit(pygame.font.Font(None, 60).render("You died", 1, "black"), (400, 200))
+    screen.blit(pygame.font.Font(None, 46).render("Your score " + str(player.score), 1, "black"), (300, 300))
+    screen.blit(pygame.font.Font(None, 36).render("Your damage bonus was " + str(player.bonus_to_damage), 1, "black"),
+                (300, 350))
+    screen.blit(pygame.font.Font(None, 36).render("Your health bonus was " + str(player.hp_bonus), 1, "black"),
+                (300, 400))
+    screen.blit(pygame.font.Font(None, 36).render("Your gave  " + str(round(player.gave_damage)) + " damage",
+                                                  1, "black"), (300, 450))
+    screen.blit(pygame.font.Font(None, 36).render("Your killed  " + str(round(player.count_kill)) + " enemy", 1,
+                                                  "black"), (300, 500))
+    screen.blit(pygame.font.Font(None, 36).render("Your took  " + str(player.count_kill) + " damage", 1,
+                                                  "black"), (300, 550))
     pygame.display.flip()
     clock.tick(FPS)
