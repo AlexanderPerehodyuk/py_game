@@ -226,9 +226,8 @@ class Enemy(pygame.sprite.Sprite):
             if player.y > self.y:
                 if level[self.y + 1][self.x] != "#":
                     self.y += 1
-            elif player.y < self.y:
-                if level[self.position[0] - 1][self.position[1]] != "#":
-                    self.y -= 1
+            if player.y < self.y:
+                self.y -= 1
         self.position = self.y, self.x
         self.move()
         clock.tick(10)
@@ -341,7 +340,7 @@ player, level_y, level_x = generate_level(level)
 camera = Camera()
 running = True
 enemy = spawn_enemy()
-bonus = spawn_bonus()
+bonus = None
 bonus_end = 0
 while running:
     for event in pygame.event.get():
@@ -355,37 +354,42 @@ while running:
                 player.take_damage(enemy.attack())
     if player.health <= 0:
         break
-    if bonus.rect.colliderect(player.rect):
-        if bonus.r_b == 1:
-            player.health += 100
-            player.hp_bonus += 100
-            bonus_messange = "You picked up the health bonus"
-        else:
-            if player.health < 1000:
-                player.bonus_to_damage += 10
+    bonus_group.draw(screen)
+    if bonus != None:
+        if bonus.rect.colliderect(player.rect):
+            if bonus.r_b == 1:
+                player.health += 100
+                player.hp_bonus += 100
+                bonus_messange = "You picked up the health bonus"
             else:
-                player.bonus_to_damage += 100
-
-            bonus_messange = "You picked up the damage bonus"
-        bonus_end = pygame.time.get_ticks() + 3000
-        player.score += 20
-        bonus.kill()
-    elif bonus.rect.colliderect(enemy.rect):
-        if bonus.r_b == 1:
-            enemy.health += 100
-            bonus_messange = "Enemy picked up the health bonus"
-        else:
-            if enemy.health < 1000:
-                enemy.bonus_to_damage += 10
+                if player.health < 1000:
+                    player.bonus_to_damage += 10
+                else:
+                    player.bonus_to_damage += 100
+                bonus_messange = "You picked up the damage bonus"
+            bonus_end = pygame.time.get_ticks() + 5000
+            player.score += 20
+            bonus.kill()
+            bonus = None
+        elif bonus.rect.colliderect(enemy.rect):
+            if bonus.r_b == 1:
+                enemy.health += 100
+                bonus_messange = "Enemy picked up the health bonus"
             else:
-                enemy.bonus_to_damage += 100
-            bonus_messange = "Enemy picked up the damage bonus"
-        bonus_end = pygame.time.get_ticks() + 5000
-        bonus.kill()
+                if enemy.health < 1000:
+                    enemy.bonus_to_damage += 10
+                else:
+                    enemy.bonus_to_damage += 100
+                bonus_messange = "Enemy picked up the damage bonus"
+            bonus_end = pygame.time.get_ticks() + 5000
+            bonus.kill()
+            bonus = None
+    else:
+        bonus = spawn_bonus()
     if enemy:
         if enemy.health <= 0:
-            enemy = spawn_enemy()
             bonus.kill()
+            enemy = spawn_enemy()
             bonus = spawn_bonus()
     else:
         enemy = spawn_enemy()
@@ -422,7 +426,7 @@ while running and player.health <= 0:
                                                   1, "black"), (300, 450))
     screen.blit(pygame.font.Font(None, 36).render("Your killed  " + str(round(player.count_kill)) + " enemy", 1,
                                                   "black"), (300, 500))
-    screen.blit(pygame.font.Font(None, 36).render("Your took  " + str(player.count_kill) + " damage", 1,
+    screen.blit(pygame.font.Font(None, 36).render("Your took  " + str(round(player.took_damage)) + " damage", 1,
                                                   "black"), (300, 550))
     pygame.display.flip()
     clock.tick(FPS)
